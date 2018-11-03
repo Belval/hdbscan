@@ -6,10 +6,26 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+type link struct {
+	p1   int
+	p2   int
+	dist float64
+}
+
+type node struct {
+	key          int
+	parentKey    int
+	parent       *node
+	distToParent float64
+	children     []*node
+}
 
 func loadData(filePath string) [][]float64 {
 	csvFile, _ := os.Open(filePath)
@@ -44,11 +60,119 @@ func saveClusteringResult(savePath string, data [][]float64) {
 	}
 }
 
+func computeMutualReachability(minClusterSize int, data [][]float64) [][]float64 {
+	dataLen := len(data)
+	fmt.Println(dataLen)
+	mutualReachabilityArr := [][]float64{}
+	coreDist := []float64{}
+	pointDist := [][]float64{}
+	for _, point := range data {
+		pointDistTmp := []float64{}
+		for _, subPoint := range data {
+			pointDistTmp = append(pointDistTmp, euclidianDistance(point, subPoint))
+		}
+		pointDist = append(pointDist, pointDistTmp)
+	}
+	for i := 0; i < dataLen; i++ {
+		pointDistTmp := []float64{}
+		pointDistTmp = append(pointDistTmp, pointDist[i]...)
+		sort.Float64s(pointDistTmp)
+		coreDist = append(coreDist, pointDistTmp[minClusterSize])
+	}
+	for i := 0; i < dataLen; i++ {
+		mutualReachabilityArrTmp := []float64{}
+		for j := 0; j < dataLen; j++ {
+			mutualReachabilityArrTmp = append(mutualReachabilityArrTmp, max([]float64{coreDist[i], coreDist[j], pointDist[i][j]}))
+		}
+		mutualReachabilityArr = append(mutualReachabilityArr, mutualReachabilityArrTmp)
+	}
+	return mutualReachabilityArr
+}
+
+func getNearestPoint(linked map[int]bool, mutualReachabilityArr [][]float64) link {
+	minDist := math.MaxFloat64
+	p1MinIdx := 0
+	p2MinIdx := 0
+	for i := 0; i < len(mutualReachabilityArr); i++ {
+		if _, ok := linked[i]; !ok {
+			for j := range linked {
+				if minDist > mutualReachabilityArr[i][j] {
+					minDist = mutualReachabilityArr[i][j]
+					p1MinIdx = j
+					p2MinIdx = i
+				}
+			}
+		}
+	}
+	return link{p1: p1MinIdx, p2: p2MinIdx, dist: mutualReachabilityArr[p1MinIdx][p2MinIdx]}
+}
+
+func computeMinSpanningTree(mutualReachabilityArr [][]float64) []link {
+	linked := make(map[int]bool)
+	links := []link{}
+	for len(links) < len(mutualReachabilityArr) {
+		link := getNearestPoint(linked, mutualReachabilityArr)
+		links = append(links, link)
+		linked[link.p2] = true
+	}
+	return links
+}
+
+func buildClusterHierarchy(links []link, leaves []node) node {
+	if len(links) == 0 {
+		return leaves[0]
+	}
+	remainingLinks := []link{}
+	p1Map := make(map[int]bool)
+	for _, l := range links {
+		if _, ok := p1Map[l.p1]; !ok && l.p1 != l.p2 {
+			p1Map[l.p1] = true
+		}
+	}
+	newLeaves := []node{}
+	for _, l := range links {
+		if _, ok := p1Map[l.p2]; !ok {
+			// Then it's a leaf
+			newLeaves = append(newLeaves, node{key: l.p2, parentKey: l.p1, parent: nil, distToParent: l.dist, children: []*node{}})
+		} else {
+			remainingLinks = append(remainingLinks, l)
+		}
+	}
+	for i, nl := range newLeaves {
+		for j, ol := range leaves {
+			if ol.parentKey == nl.key {
+				newLeaves[i].children = append(newLeaves[i].children, &leaves[j])
+				leaves[j].parent = &newLeaves[i]
+			}
+		}
+	}
+	return buildClusterHierarchy(remainingLinks, newLeaves)
+}
+
 func cluster(dataPath string, savePath string, minClusterSize int, metric string, alpha float64, algorithm string, leafSize int, genMinSpanTree bool, clusterSelectionMethod string) {
 	fmt.Println("Loading data")
 	data := loadData(dataPath)
 
-	// Find all clusters of size minClusterSize
+	// Compute the adjency matrix using mutual reachability
+	mutualReachabilityArr := computeMutualReachability(minClusterSize, data)
+	fmt.Printf("%v", mutualReachabilityArr)
+
+	// Compute the min spanning tree using  the mutual reachability table created
+	links := computeMinSpanningTree(mutualReachabilityArr)
+
+	// Build the tree hierarchy structure of the clusters
+	node := buildClusterHierarchy(links, []node{})
+
+	fmt.Println("%v", node)
+	fmt.Println(node.children)
+
+	//for i, l := range links {
+	//	fmt.Println(i)
+	//	fmt.Println(l.p1)
+	//	fmt.Println(l.p2)
+	//	fmt.Println(l.dist)
+	//	fmt.Println("---------------------")
+	//}
 
 	fmt.Println("Saving data")
 	saveClusteringResult(savePath, data)
