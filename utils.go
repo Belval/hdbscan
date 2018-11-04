@@ -1,5 +1,9 @@
 package main
 
+import (
+	"fmt"
+)
+
 func max(arr []float64) float64 {
 	max := 0.0
 	for _, v := range arr {
@@ -8,4 +12,11 @@ func max(arr []float64) float64 {
 		}
 	}
 	return max
+}
+
+func printTreeStructure(tree *node) {
+	fmt.Println(tree)
+	for _, c := range tree.children {
+		printTreeStructure(c)
+	}
 }

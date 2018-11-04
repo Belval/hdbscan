@@ -20,11 +20,15 @@ type link struct {
 }
 
 type node struct {
-	key          int
-	parentKey    int
-	parent       *node
-	distToParent float64
-	children     []*node
+	key             int
+	parentKey       int
+	parent          *node
+	distToParent    float64
+	children        []*node
+	descendantCount int
+	lBirth          float64
+	lDeath          float64
+	stability       float64
 }
 
 func loadData(filePath string) [][]float64 {
@@ -133,7 +137,17 @@ func buildClusterHierarchy(links []link, leaves []node) node {
 	for _, l := range links {
 		if _, ok := p1Map[l.p2]; !ok {
 			// Then it's a leaf
-			newLeaves = append(newLeaves, node{key: l.p2, parentKey: l.p1, parent: nil, distToParent: l.dist, children: []*node{}})
+			newLeaves = append(
+				newLeaves,
+				node{
+					key:             l.p2,
+					parentKey:       l.p1,
+					parent:          nil,
+					distToParent:    l.dist,
+					children:        []*node{},
+					descendantCount: 0,
+				},
+			)
 		} else {
 			remainingLinks = append(remainingLinks, l)
 		}
@@ -142,11 +156,45 @@ func buildClusterHierarchy(links []link, leaves []node) node {
 		for j, ol := range leaves {
 			if ol.parentKey == nl.key {
 				newLeaves[i].children = append(newLeaves[i].children, &leaves[j])
+				newLeaves[i].descendantCount = newLeaves[i].descendantCount + ol.descendantCount + 1
 				leaves[j].parent = &newLeaves[i]
 			}
 		}
 	}
+	for _, ol := range leaves {
+		if ol.parent == nil {
+			newLeaves = append(newLeaves, ol)
+		}
+	}
 	return buildClusterHierarchy(remainingLinks, newLeaves)
+}
+
+func condenseClusterTree(topNode *node, condensedTopNode *node, minClusterSize int) node {
+	if condensedTopNode == nil {
+		condensedTopNode = &node{
+			key:             topNode.key,
+			parentKey:       topNode.parentKey,
+			parent:          nil,
+			distToParent:    0,
+			children:        []*node{},
+			descendantCount: 0,
+		}
+	}
+	for _, c := range topNode.children {
+		if c.descendantCount >= minClusterSize {
+			c2 := &node{
+				key:             c.key,
+				parentKey:       c.parentKey,
+				parent:          condensedTopNode,
+				distToParent:    c.distToParent,
+				children:        []*node{},
+				descendantCount: c.descendantCount,
+			}
+			condensedTopNode.children = append(condensedTopNode.children, c2)
+			condenseClusterTree(c, c2, minClusterSize)
+		}
+	}
+	return *condensedTopNode
 }
 
 func cluster(dataPath string, savePath string, minClusterSize int, metric string, alpha float64, algorithm string, leafSize int, genMinSpanTree bool, clusterSelectionMethod string) {
@@ -155,24 +203,21 @@ func cluster(dataPath string, savePath string, minClusterSize int, metric string
 
 	// Compute the adjency matrix using mutual reachability
 	mutualReachabilityArr := computeMutualReachability(minClusterSize, data)
-	fmt.Printf("%v", mutualReachabilityArr)
 
 	// Compute the min spanning tree using  the mutual reachability table created
 	links := computeMinSpanningTree(mutualReachabilityArr)
 
 	// Build the tree hierarchy structure of the clusters
-	node := buildClusterHierarchy(links, []node{})
+	tree := buildClusterHierarchy(links, []node{})
 
-	fmt.Println("%v", node)
-	fmt.Println(node.children)
+	// Build the condensed tree
+	condensedTree := condenseClusterTree(&tree, nil, minClusterSize)
 
-	//for i, l := range links {
-	//	fmt.Println(i)
-	//	fmt.Println(l.p1)
-	//	fmt.Println(l.p2)
-	//	fmt.Println(l.dist)
-	//	fmt.Println("---------------------")
-	//}
+	fmt.Println("-----------------------")
+	printTreeStructure(&tree)
+	fmt.Println("-----------------------")
+	printTreeStructure(&condensedTree)
+	fmt.Println("-----------------------")
 
 	fmt.Println("Saving data")
 	saveClusteringResult(savePath, data)
