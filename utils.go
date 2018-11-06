@@ -20,3 +20,10 @@ func printTreeStructure(tree *node) {
 		printTreeStructure(c)
 	}
 }
+
+func printClusterStructure(tree *cluster) {
+	fmt.Println(tree)
+	for _, c := range tree.children {
+		printClusterStructure(c)
+	}
+}

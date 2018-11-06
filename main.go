@@ -38,7 +38,7 @@ func main() {
 	fmt.Println("gMST:", *genMinSpanTreePtr)
 	fmt.Println("cSM", *clusterSelectionMethodPtr)
 
-	cluster(
+	findClusters(
 		*dataFilePathPtr,
 		*clusteringDataSavePathPtr,
 		*minClusterSizePtr,

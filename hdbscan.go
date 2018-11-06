@@ -26,9 +26,16 @@ type node struct {
 	distToParent    float64
 	children        []*node
 	descendantCount int
-	lBirth          float64
-	lDeath          float64
-	stability       float64
+}
+
+type cluster struct {
+	parent           *cluster
+	points           []int
+	pointsDistParent []float64
+	children         []*cluster
+	lBirth           float64
+	lDeath           float64
+	stability        float64
 }
 
 func loadData(filePath string) [][]float64 {
@@ -81,7 +88,8 @@ func computeMutualReachability(minClusterSize int, data [][]float64) [][]float64
 		pointDistTmp := []float64{}
 		pointDistTmp = append(pointDistTmp, pointDist[i]...)
 		sort.Float64s(pointDistTmp)
-		coreDist = append(coreDist, pointDistTmp[minClusterSize])
+		fmt.Println(pointDistTmp)
+		coreDist = append(coreDist, pointDistTmp[minClusterSize-1])
 	}
 	for i := 0; i < dataLen; i++ {
 		mutualReachabilityArrTmp := []float64{}
@@ -169,40 +177,53 @@ func buildClusterHierarchy(links []link, leaves []node) node {
 	return buildClusterHierarchy(remainingLinks, newLeaves)
 }
 
-func condenseClusterTree(topNode *node, condensedTopNode *node, minClusterSize int) node {
-	if condensedTopNode == nil {
-		condensedTopNode = &node{
-			key:             topNode.key,
-			parentKey:       topNode.parentKey,
-			parent:          nil,
-			distToParent:    0,
-			children:        []*node{},
-			descendantCount: 0,
+func condenseClusterTree(topNode *node, condensedTopCluster *cluster, minClusterSize int) cluster {
+	if condensedTopCluster == nil {
+		condensedTopCluster = &cluster{
+			parent:           nil,
+			points:           []int{},
+			pointsDistParent: []float64{},
+			children:         []*cluster{},
+			lBirth:           0.0,
+			lDeath:           0.0,
+			stability:        0.0,
 		}
 	}
 	for _, c := range topNode.children {
 		if c.descendantCount >= minClusterSize {
-			c2 := &node{
-				key:             c.key,
-				parentKey:       c.parentKey,
-				parent:          condensedTopNode,
-				distToParent:    c.distToParent,
-				children:        []*node{},
-				descendantCount: c.descendantCount,
+			c2 := &cluster{
+				parent:           condensedTopCluster,
+				points:           []int{},
+				pointsDistParent: []float64{},
+				children:         []*cluster{},
+				lBirth:           0.0,
+				lDeath:           0.0,
+				stability:        0.0,
 			}
-			condensedTopNode.children = append(condensedTopNode.children, c2)
+			c2.points = append(c2.points, c.key)
+			c2.pointsDistParent = append(c2.pointsDistParent, c.distToParent)
+			condensedTopCluster.children = append(condensedTopCluster.children, c2)
 			condenseClusterTree(c, c2, minClusterSize)
+		} else {
+			condensedTopCluster.points = append(condensedTopCluster.points, c.key)
+			condensedTopCluster.pointsDistParent = append(condensedTopCluster.pointsDistParent, c.distToParent)
 		}
 	}
-	return *condensedTopNode
+	return *condensedTopCluster
 }
 
-func cluster(dataPath string, savePath string, minClusterSize int, metric string, alpha float64, algorithm string, leafSize int, genMinSpanTree bool, clusterSelectionMethod string) {
+func selectClusters(condensedTree *cluster, points [][]float64) []*node {
+	return nil
+}
+
+func findClusters(dataPath string, savePath string, minClusterSize int, metric string, alpha float64, algorithm string, leafSize int, genMinSpanTree bool, clusterSelectionMethod string) {
 	fmt.Println("Loading data")
 	data := loadData(dataPath)
 
 	// Compute the adjency matrix using mutual reachability
 	mutualReachabilityArr := computeMutualReachability(minClusterSize, data)
+
+	fmt.Println(mutualReachabilityArr)
 
 	// Compute the min spanning tree using  the mutual reachability table created
 	links := computeMinSpanningTree(mutualReachabilityArr)
@@ -213,11 +234,17 @@ func cluster(dataPath string, savePath string, minClusterSize int, metric string
 	// Build the condensed tree
 	condensedTree := condenseClusterTree(&tree, nil, minClusterSize)
 
+	clusters := selectClusters(&condensedTree, data)
+
 	fmt.Println("-----------------------")
 	printTreeStructure(&tree)
 	fmt.Println("-----------------------")
-	printTreeStructure(&condensedTree)
+	printClusterStructure(&condensedTree)
 	fmt.Println("-----------------------")
+	for _, n := range clusters {
+		printTreeStructure(n)
+		fmt.Println("----------------------")
+	}
 
 	fmt.Println("Saving data")
 	saveClusteringResult(savePath, data)
