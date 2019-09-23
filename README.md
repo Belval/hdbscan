@@ -34,6 +34,12 @@ As you might have figured out, these are directly taken from the Python implemen
 
 It is worth noting that most of these parameters are useless at the moment and are subject to change.
 
+## Build
+
+1. `git clone git@github.com:Belval/hdbscan.git`
+2. `go build -o hdbscan -i ./src`
+3. `./hdbscan -h`
+
 ## Implementation details
 
 This is a non-optimal implementation in its current form. The algorithm used to build the MST is O(n^2) and I am fairly sure some computations are wasted here and there.
